@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keselamatan & Kebersihan Makanan - Kemahiran Asas Roti</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Fredoka', 'Nunito', sans-serif;
+            background-color: #0f172a;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        /* Video Feed and Canvas Setup */
+        #webcam-video {
+            transform: scaleX(-1);
+            display: none;
+        }
+
+        #game-canvas {
+            transform: scaleX(-1);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .interactive-element {
+            pointer-events: auto;
+        }
+
+        /* Pulsing & Floating Animations */
+        @keyframes float-gentle {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-8px) scale(1.02); }
+        }
+
+        .animate-float {
+            animation: float-gentle 2.5s ease-in-out infinite;
+        }
+
+        @keyframes box-shake {
+            0%, 100% { transform: rotate(0deg); }
+            20% { transform: rotate(-5deg); }
+            40% { transform: rotate(5deg); }
+            60% { transform: rotate(-3deg); }
+            80% { transform: rotate(3deg); }
+        }
+
+        .animate-shake {
+            animation: box-shake 0.5s ease-in-out;
+        }
+
+        /* Custom Glassmorphism Cards */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(12px);
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+        }
+
+        .glass-card-dark {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen m-0 p-0 overflow-hidden bg-slate-900 text-slate-800">
+
+    <!-- Hidden input video element -->
+    <video id="webcam-video" playsinline></video>
+
+    <!-- Canvas for full screen clear webcam background & dynamic hand tracking graphics -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer" class="flex flex-col justify-between p-4 md:p-6 box-border">
+
+        <!-- Top HUD Header & Question Banner -->
+        <div id="header-hud" class="w-full max-w-5xl mx-auto flex flex-col items-center gap-3 transition-opacity duration-300 opacity-0">
+            <!-- Top Status Bar -->
+            <div class="w-full flex justify-between items-center px-4 py-2 rounded-2xl glass-card-dark text-white font-bold text-lg md:text-xl">
+                <div class="flex items-center gap-3">
+                    <span class="bg-amber-500 text-slate-900 px-3 py-1 rounded-xl text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-bread-slice"></i> Kemahiran Roti
+                    </span>
+                    <span id="question-progress" class="text-amber-300">Soalan 1 / 5</span>
+                </div>
+
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-2 text-emerald-400">
+                        <i class="fa-solid fa-trophy"></i>
+                        <span>Skor: <span id="score-text" class="text-white">0</span></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-cyan-400">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>Masa: <span id="timer-text" class="text-white">0s</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Question Box -->
+            <div id="question-box" class="w-full glass-card rounded-3xl p-5 md:p-6 text-center border-4 border-amber-400 transition-transform duration-300">
+                <span class="text-xs md:text-sm font-extrabold uppercase tracking-widest text-amber-600 bg-amber-100 px-3 py-1 rounded-full inline-block mb-2">
+                    <i class="fa-solid fa-circle-question"></i> Soalan Kebersihan & Keselamatan
+                </span>
+                <h1 id="question-text" class="text-xl md:text-2xl lg:text-3xl font-black text-slate-800 leading-relaxed">
+                    Memuat naik soalan...
+                </h1>
+            </div>
+        </div>
+
+        <!-- Bottom Interactive Gift Answer Boxes (Kept intentionally compact/small) -->
+        <div id="answers-container" class="w-full flex justify-between items-end px-2 md:px-8 mb-2 transition-opacity duration-300 opacity-0">
+            
+            <!-- Gift Box A (Bottom Left) -->
+            <div id="box-a" class="answer-box group relative flex flex-col items-center w-48 md:w-56 transition-all duration-300 transform">
+                <!-- Dwell Progress Indicator Circle Label -->
+                <div class="dwell-badge hidden mb-1 bg-amber-500 text-white font-bold text-xs px-2 py-1 rounded-full shadow-lg border-2 border-white animate-bounce">
+                    <i class="fa-solid fa-hand-pointer"></i> Tahan 1 Saat...
+                </div>
+
+                <!-- Answer Label Card attached above gift -->
+                <div class="w-full bg-indigo-600 text-white p-3 rounded-2xl shadow-lg border-2 border-indigo-300 text-center font-extrabold text-sm md:text-base mb-2 group-hover:bg-indigo-700 transition-colors">
+                    <span class="bg-indigo-800 text-amber-300 px-2 py-0.5 rounded-lg text-xs mr-1 font-black">A</span>
+                    <span id="text-option-a">Jawapan A</span>
+                </div>
+
+                <!-- Compact Mystery Gift Visual -->
+                <div class="relative w-28 h-28 md:w-32 md:h-32 bg-gradient-to-tr from-amber-500 to-yellow-300 rounded-2xl shadow-xl border-4 border-white flex flex-col items-center justify-center p-2 transform group-hover:scale-105 transition-transform">
+                    <i class="fa-solid fa-gift text-4xl md:text-5xl text-red-600 drop-shadow-md"></i>
+                    <span class="text-[10px] uppercase font-black text-slate-800 bg-white/80 px-2 py-0.5 rounded-full mt-1">Kotak A</span>
+                    <div class="absolute inset-0 rounded-xl border-2 border-dashed border-yellow-100 opacity-60"></div>
+                </div>
+            </div>
+
+            <!-- Gift Box B (Bottom Right) -->
+            <div id="box-b" class="answer-box group relative flex flex-col items-center w-48 md:w-56 transition-all duration-300 transform">
+                <!-- Dwell Progress Indicator Circle Label -->
+                <div class="dwell-badge hidden mb-1 bg-amber-500 text-white font-bold text-xs px-2 py-1 rounded-full shadow-lg border-2 border-white animate-bounce">
+                    <i class="fa-solid fa-hand-pointer"></i> Tahan 1 Saat...
+                </div>
+
+                <!-- Answer Label Card attached above gift -->
+                <div class="w-full bg-emerald-600 text-white p-3 rounded-2xl shadow-lg border-2 border-emerald-300 text-center font-extrabold text-sm md:text-base mb-2 group-hover:bg-emerald-700 transition-colors">
+                    <span class="bg-emerald-800 text-amber-300 px-2 py-0.5 rounded-lg text-xs mr-1 font-black">B</span>
+                    <span id="text-option-b">Jawapan B</span>
+                </div>
+
+                <!-- Compact Mystery Gift Visual -->
+                <div class="relative w-28 h-28 md:w-32 md:h-32 bg-gradient-to-tr from-emerald-500 to-teal-300 rounded-2xl shadow-xl border-4 border-white flex flex-col items-center justify-center p-2 transform group-hover:scale-105 transition-transform">
+                    <i class="fa-solid fa-gift text-4xl md:text-5xl text-purple-600 drop-shadow-md"></i>
+                    <span class="text-[10px] uppercase font-black text-slate-800 bg-white/80 px-2 py-0.5 rounded-full mt-1">Kotak B</span>
+                    <div class="absolute inset-0 rounded-xl border-2 border-dashed border-teal-100 opacity-60"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- START GAME MODAL OVERLAY -->
+    <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="glass-card max-w-xl w-full rounded-3xl p-6 md:p-8 text-center border-4 border-amber-400 relative overflow-hidden animate-float">
+            
+            <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-amber-400 shadow-inner">
+                <i class="fa-solid fa-hand-pointer text-4xl"></i>
+            </div>
+
+            <h2 class="text-2xl md:text-3xl font-black text-slate-800 mb-2">
+                Keselamatan & Kebersihan Makanan
+            </h2>
+            <p class="text-sm md:text-base font-extrabold text-amber-600 mb-4 uppercase tracking-wider">
+                Latihan Kemahiran Asas Roti (Pendidikan Khas)
+            </p>
+
+            <div class="bg-amber-50/90 rounded-2xl p-4 text-left text-slate-700 text-sm md:text-base mb-6 space-y-2 border-2 border-amber-200">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-camera text-amber-600 text-lg mt-1"></i>
+                    <span>Benarkan perisian mengakses **Kamera/Webcam** anda.</span>
+                </div>
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-hand text-amber-600 text-lg mt-1"></i>
+                    <span>Tunjukkan **Jari Telunjuk** pada skrin sebagai kursor.</span>
+                </div>
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-stopwatch text-amber-600 text-lg mt-1"></i>
+                    <span>**Tunjuk dan Tahan (1 Saat)** pada Kotak Hadiah yang mengandungi jawapan betul!</span>
+                </div>
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-face-smile text-amber-600 text-lg mt-1"></i>
+                    <span>Wajah anda kekal jelas di latar belakang semasa bermain!</span>
+                </div>
+            </div>
+
+            <button id="btn-start" onclick="startGame()" class="interactive-element w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all transform hover:-translate-y-1 border-b-4 border-orange-700 flex items-center justify-center gap-3">
+                <i class="fa-solid fa-play"></i> MULA BERMAIN
+            </button>
+
+            <!-- Loading status indicator -->
+            <div id="camera-loading" class="hidden mt-4 flex items-center justify-center gap-2 text-amber-700 font-bold text-sm">
+                <i class="fa-solid fa-spinner fa-spin"></i> Menyediakan kamera & pengecaman jari...
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / HIGH SCORE MODAL OVERLAY -->
+    <div id="end-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+        <div class="glass-card max-w-lg w-full rounded-3xl p-6 md:p-8 text-center border-4 border-emerald-400 relative overflow-hidden">
+            
+            <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 border-4 border-emerald-400 shadow-inner">
+                <i class="fa-solid fa-award text-4xl"></i>
+            </div>
+
+            <h2 class="text-3xl font-black text-slate-800 mb-1">TAHNIAH! SYABAS!</h2>
+            <p class="text-sm font-bold text-slate-600 mb-6">Anda Telah Tamat Latihan Kebersihan Makanan</p>
+
+            <!-- Stars Rating Display -->
+            <div class="flex justify-center gap-2 text-3xl md:text-4xl text-amber-400 mb-6">
+                <i id="star-1" class="fa-solid fa-star transition-all"></i>
+                <i id="star-2" class="fa-solid fa-star transition-all"></i>
+                <i id="star-3" class="fa-solid fa-star transition-all"></i>
+            </div>
+
+            <!-- Final Score Summary Card -->
+            <div class="bg-slate-100 rounded-2xl p-4 mb-6 border border-slate-200 space-y-3">
+                <div class="flex justify-between items-center text-slate-700 font-bold">
+                    <span><i class="fa-solid fa-star text-amber-500 mr-2"></i> Markah Terkumpul:</span>
+                    <span id="final-score" class="text-2xl font-black text-emerald-600">0</span>
+                </div>
+                <div class="flex justify-between items-center text-slate-700 font-bold">
+                    <span><i class="fa-solid fa-stopwatch text-cyan-500 mr-2"></i> Masa Keseluruhan:</span>
+                    <span id="final-time" class="text-lg font-black text-slate-800">0s</span>
+                </div>
+                <div class="flex justify-between items-center text-slate-700 font-bold border-t border-slate-300 pt-2">
+                    <span><i class="fa-solid fa-crown text-amber-500 mr-2"></i> Rekod Markah Tertinggi:</span>
+                    <span id="high-score" class="text-lg font-black text-amber-600">0</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="interactive-element w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black text-xl rounded-2xl shadow-xl transition-all transform hover:-translate-y-1 border-b-4 border-teal-700 flex items-center justify-center gap-3">
+                <i class="fa-solid fa-rotate-right"></i> MAIN SEMULA
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* ===================================================================
+           QUESTION BANK (Keselamatan & Kebersihan Makanan - Kemahiran Roti)
+           Designed for Special Education High School Students
+           =================================================================== */
+        const QUESTION_BANK = [
+            {
+                question: "Mengapakah penting untuk kita mencuci tangan sebelum mula kerja di dapur?",
+                optionA: "Mematikan kuman & elak keracunan",
+                optionB: "Supaya tangan kelihatan wangi",
+                correct: "A"
+            },
+            {
+                question: "Apakah pemakaian WAJIB semasa menyediakan doh roti?",
+                optionA: "Apron & penutup kepala (hairnet)",
+                optionB: "Baju sejuk & sarung tangan tebal",
+                correct: "A"
+            },
+            {
+                question: "Apakah yang perlu dilakukan jika terbersin semasa menguli roti?",
+                optionA: "Lap tangan pada baju dan sambung",
+                optionB: "Tutup mulut & basuh tangan semula",
+                correct: "B"
+            },
+            {
+                question: "Bagaimanakah cara menyimpan tepung roti dan yis yang betul?",
+                optionA: "Dalam bekas bertutup & bersih",
+                optionB: "Dibiarkan terbuka di atas meja",
+                correct: "A"
+            },
+            {
+                question: "Apakah tindakan anda jika kuku panjang sebelum latihan masakan?",
+                optionA: "Potong kuku hingga pendek & bersih",
+                optionB: "Warnakan kuku supaya cantik",
+                correct: "A"
+            }
+        ];
+
+        /* Game State Variables */
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let gameTimer = 0;
+        let timerInterval = null;
+        let isGameActive = false;
+        let isProcessingAnswer = false;
+        let highScore = parseInt(localStorage.getItem('roti_hygiene_highscore') || '0');
+
+        /* Hand Tracking & Dwell Selection Variables */
+        let indexFingerPos = null; // {x, y}
+        let hoverTarget = null; // 'A', 'B', or null
+        let dwellStartTime = null;
+        const DWELL_DURATION = 1000; // 1 Second (1000ms)
+
+        /* Canvas & Rendering Context */
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam-video');
+
+        /* Visual Particles Array for Gift Explosion */
+        let particles = [];
+
+        /* ===================================================================
+           WEB AUDIO SYNTHESIZER (Zero External Audio File Dependency)
+           =================================================================== */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'hover') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            } else if (type === 'correct') {
+                // Happy Arpeggio
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                osc.frequency.setValueAtTime(1046.50, now + 0.3); // C6
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'wrong') {
+                // Buzz Sound
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'open_gift') {
+                // Fanfare Sparkle
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, now); // D5
+                osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.25); // D6
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        /* ===================================================================
+           MEDIAPIPE HANDS SETUP & WEBCAM INTEGRATION
+           =================================================================== */
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+
+        hands.onResults(onHandResults);
+
+        let camera = null;
+
+        function initCamera() {
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 1280,
+                height: 720
+            });
+            camera.start();
+        }
+
+        /* Handle MediaPipe Detection Output */
+        function onHandResults(results) {
+            // Resize Canvas to Match Window Viewport
+            if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            // Clear Canvas
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Draw Clean Webcam Background Video Feed (CLEAR FACIAL VIEW)
+            if (results.image) {
+                ctx.globalAlpha = 1.0; // Clean visibility
+                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+            }
+
+            // Restore canvas context transformation
+            ctx.restore();
+
+            // Render visual particle effects on canvas
+            updateAndDrawParticles();
+
+            // 2. Track Index Fingertip (Landmark #8)
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8]; // Index Finger Tip
+
+                // Coordinates mapping (Horizontal flip because canvas is mirrored)
+                const screenX = (1 - indexTip.x) * canvas.width;
+                const screenY = indexTip.y * canvas.height;
+
+                indexFingerPos = { x: screenX, y: screenY };
+
+                if (isGameActive && !isProcessingAnswer) {
+                    checkDwellCollision(screenX, screenY);
+                }
+
+                // Render glowing finger cursor & dwell progress ring
+                drawFingerCursor(screenX, screenY);
+            } else {
+                indexFingerPos = null;
+                resetDwell();
+            }
+        }
+
+        /* ===================================================================
+           COLLISION DETECTION & 1-SECOND DWELL MECHANIC
+           =================================================================== */
+        function checkDwellCollision(x, y) {
+            const boxAElem = document.getElementById('box-a');
+            const boxBElem = document.getElementById('box-b');
+
+            const rectA = boxAElem.getBoundingClientRect();
+            const rectB = boxBElem.getBoundingClientRect();
+
+            let currentHover = null;
+
+            // Check if fingertip is inside Box A
+            if (x >= rectA.left && x <= rectA.right && y >= rectA.top && y <= rectA.bottom) {
+                currentHover = 'A';
+            } 
+            // Check if fingertip is inside Box B
+            else if (x >= rectB.left && x <= rectB.right && y >= rectB.top && y <= rectB.bottom) {
+                currentHover = 'B';
+            }
+
+            // Hover state update
+            if (currentHover !== hoverTarget) {
+                hoverTarget = currentHover;
+                if (hoverTarget) {
+                    dwellStartTime = Date.now();
+                    playSound('hover');
+                    updateDwellBadges(hoverTarget);
+                } else {
+                    resetDwell();
+                }
+            } else if (hoverTarget && dwellStartTime) {
+                // Continuous dwell calculation
+                const elapsedTime = Date.now() - dwellStartTime;
+                if (elapsedTime >= DWELL_DURATION) {
+                    // Trigger answer selection on 1 second complete!
+                    const selectedChoice = hoverTarget;
+                    resetDwell();
+                    selectAnswer(selectedChoice);
+                }
+            }
+        }
+
+        function resetDwell() {
+            hoverTarget = null;
+            dwellStartTime = null;
+            updateDwellBadges(null);
+        }
+
+        function updateDwellBadges(activeTarget) {
+            const badgeA = document.querySelector('#box-a .dwell-badge');
+            const badgeB = document.querySelector('#box-b .dwell-badge');
+
+            if (activeTarget === 'A') {
+                badgeA?.classList.remove('hidden');
+                badgeB?.classList.add('hidden');
+            } else if (activeTarget === 'B') {
+                badgeB?.classList.remove('hidden');
+                badgeA?.classList.add('hidden');
+            } else {
+                badgeA?.classList.add('hidden');
+                badgeB?.classList.add('hidden');
+            }
+        }
+
+        /* ===================================================================
+           CANVAS GRAPHICS & CURSOR RENDERING
+           =================================================================== */
+        function drawFingerCursor(x, y) {
+            ctx.save();
+            
+            // Draw Fingertip Pointer Glow
+            ctx.beginPath();
+            ctx.arc(x, y, 16, 0, 2 * Math.PI);
+            ctx.fillStyle = '#f59e0b'; // Amber 500
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            // Inner Indicator Point
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            // Draw Radial Dwell Progress Ring
+            if (hoverTarget && dwellStartTime) {
+                const elapsed = Date.now() - dwellStartTime;
+                const progress = Math.min(1.0, elapsed / DWELL_DURATION);
+
+                ctx.beginPath();
+                ctx.arc(x, y, 28, -Math.PI / 2, (-Math.PI / 2) + (2 * Math.PI * progress));
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#10b981'; // Emerald 500
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        /* Particle Explosions for Correct Answers */
+        function createExplosion(x, y) {
+            const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'];
+            for (let i = 0; i < 35; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: (Math.random() - 0.5) * 12,
+                    size: Math.random() * 8 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    alpha: 1.0,
+                    life: Math.random() * 30 + 20
+                });
+            }
+        }
+
+        function updateAndDrawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 1 / p.life;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /* ===================================================================
+           GAMEPLAY FLOW & LOGIC CONTROLLER
+           =================================================================== */
+        function startGame() {
+            document.getElementById('camera-loading').classList.remove('hidden');
+            document.getElementById('btn-start').classList.add('opacity-50', 'pointer-events-none');
+
+            // Initialize Camera Stream
+            initCamera();
+
+            setTimeout(() => {
+                document.getElementById('start-modal').classList.add('hidden');
+                document.getElementById('header-hud').classList.remove('opacity-0');
+                document.getElementById('answers-container').classList.remove('opacity-0');
+
+                resetGameStats();
+                loadQuestion();
+                startTimer();
+                isGameActive = true;
+            }, 1200);
+        }
+
+        function resetGameStats() {
+            currentQuestionIndex = 0;
+            score = 0;
+            gameTimer = 0;
+            isProcessingAnswer = false;
+            document.getElementById('score-text').innerText = '0';
+            document.getElementById('timer-text').innerText = '0s';
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (isGameActive) {
+                    gameTimer++;
+                    document.getElementById('timer-text').innerText = gameTimer + 's';
+                }
+            }, 1000);
+        }
+
+        function loadQuestion() {
+            isProcessingAnswer = false;
+            const q = QUESTION_BANK[currentQuestionIndex];
+
+            document.getElementById('question-progress').innerText = `Soalan ${currentQuestionIndex + 1} / ${QUESTION_BANK.length}`;
+            document.getElementById('question-text').innerText = q.question;
+
+            document.getElementById('text-option-a').innerText = q.optionA;
+            document.getElementById('text-option-b').innerText = q.optionB;
+
+            // Reset Box Visual Effects
+            const boxA = document.getElementById('box-a');
+            const boxB = document.getElementById('box-b');
+            boxA.className = 'answer-box group relative flex flex-col items-center w-48 md:w-56 transition-all duration-300 transform';
+            boxB.className = 'answer-box group relative flex flex-col items-center w-48 md:w-56 transition-all duration-300 transform';
+        }
+
+        function selectAnswer(chosenOption) {
+            if (isProcessingAnswer) return;
+            isProcessingAnswer = true;
+
+            const q = QUESTION_BANK[currentQuestionIndex];
+            const isCorrect = (chosenOption === q.correct);
+
+            const targetBoxElem = chosenOption === 'A' ? document.getElementById('box-a') : document.getElementById('box-b');
+            const rect = targetBoxElem.getBoundingClientRect();
+
+            if (isCorrect) {
+                // Correct Choice Feedback
+                playSound('open_gift');
+                playSound('correct');
+                targetBoxElem.classList.add('animate-shake');
+
+                // Generate particles over opened gift box
+                createExplosion(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+                // Time-based Bonus Points Calculation
+                const speedBonus = Math.max(10, 100 - (gameTimer * 2));
+                score += 100 + speedBonus;
+                document.getElementById('score-text').innerText = score;
+
+                // Visual Toast Highlight
+                targetBoxElem.classList.add('scale-110');
+            } else {
+                // Incorrect Choice Feedback
+                playSound('wrong');
+                targetBoxElem.classList.add('opacity-40');
+            }
+
+            // Transition to Next Question after short delay
+            setTimeout(() => {
+                currentQuestionIndex++;
+                if (currentQuestionIndex < QUESTION_BANK.length) {
+                    loadQuestion();
+                } else {
+                    endGame();
+                }
+            }, 1500);
+        }
+
+        function endGame() {
+            isGameActive = false;
+            clearInterval(timerInterval);
+
+            // Update Highscore
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('roti_hygiene_highscore', highScore.toString());
+            }
+
+            // Render Final Modal Results
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-time').innerText = gameTimer + 's';
+            document.getElementById('high-score').innerText = highScore;
+
+            // Star Rating Logic
+            const star1 = document.getElementById('star-1');
+            const star2 = document.getElementById('star-2');
+            const star3 = document.getElementById('star-3');
+
+            star1.className = 'fa-solid fa-star text-amber-400';
+            star2.className = score >= 350 ? 'fa-solid fa-star text-amber-400' : 'fa-regular fa-star text-slate-400';
+            star3.className = score >= 500 ? 'fa-solid fa-star text-amber-400' : 'fa-regular fa-star text-slate-400';
+
+            // Show End Screen Modal
+            document.getElementById('end-modal').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('end-modal').classList.add('hidden');
+            resetGameStats();
+            loadQuestion();
+            startTimer();
+            isGameActive = true;
+        }
+    </script>
+</body>
+</html>
